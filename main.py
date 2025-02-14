@@ -15,7 +15,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         super(self.__class__, self).__init__()
         self.setupUi(self)
         self.camera = None
-        self.database_path = None
+        self.database_path = "faces.db" if os.path.exists("faces.db") else None
 
         # Set up video dimensions from the UI container
         self.videoFrameH = self.videoFrame.height()
