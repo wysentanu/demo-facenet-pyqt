@@ -15,37 +15,41 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         super(self.__class__, self).__init__()
         self.setupUi(self)
         self.camera = None
-
-        # Other properties
-        self.modelPath = None
-        self.openedImage = None
-        self.Model = None
+        self.database_path = None
 
         # Set up video dimensions from the UI container
         self.videoFrameH = self.videoFrame.height()
         self.videoFrameW = self.videoFrame.width()
 
         # Connect menu actions
-        self.actionLoadDatabase.triggered.connect(self._show_load_database_dialog)
+        self.LoadDatabaseButton.clicked.connect(self._show_load_database_dialog)
 
         # Start video stream
         self._show_video()
 
     def _show_load_database_dialog(self):
-        self.filename = QtWidgets.QFileDialog.getOpenFileName(self, 'Open file', '', "Supported Media Files (*.mp4 *.jpg)")
+        self.filename = QtWidgets.QFileDialog.getOpenFileName(self, 'Open file', '', "Supported SQLite Vector Database (*.db)")
 
         if self.filename:
-            # Check file extension
-            split_path = os.path.splitext(self.filename[0])
+            self.database_path = self.filename[0]
+            
+            # Check if the file exists
+            if os.path.exists(self.database_path):
+                self._show_video(self.database_path)
 
-            print(split_path)
-
-    def _show_video(self):
+    def _show_video(self, dbPath=None):
         try:
+            # Stop the previous camera if it exists
+            if self.camera:
+                self.camera.stop()
+                self.camera.frame_ready.disconnect(self.update_video_label)
+
+            # Initialize a new camera
             print("Initializing camera...")
             # Here, we use source=0 for the default webcam.
             self.camera = VideoStream(
-                source=0
+                source=0,
+                database_path=self.database_path
             )
         except ValueError as e:
             self.videoFrame.setText("Device not found!\n\nIs FFMPEG available?")
@@ -53,15 +57,6 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         else:
             print("Camera initialized successfully. Starting video stream.")
             self.camera.frame_ready.connect(self.update_video_label)
-
-            # Retrieve camera native size (could be the size you set or reported by cv2)
-            width, height = self.camera.size
-            scale = 1.5
-            scaled_width = int(width * scale)
-            scaled_height = int(height * scale)
-
-            # Resize the main window to match the scaled camera resolution
-            self.resize(scaled_width, scaled_height)
 
     @pyqtSlot(QImage)
     def update_video_label(self, image):

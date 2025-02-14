@@ -56,7 +56,7 @@
        </spacer>
       </item>
       <item>
-       <widget class="QPushButton" name="ToggleCamera">
+       <widget class="QPushButton" name="LoadDatabaseButton">
         <property name="sizePolicy">
          <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
           <horstretch>0</horstretch>
@@ -64,7 +64,7 @@
          </sizepolicy>
         </property>
         <property name="text">
-         <string>Turn Off Camera</string>
+         <string>Load Database</string>
         </property>
        </widget>
       </item>
@@ -96,7 +96,7 @@
    </property>
    <widget class="QMenu" name="actionLoadDatabase">
     <property name="title">
-     <string>Load Database..</string>
+     <string>Load Database</string>
     </property>
    </widget>
    <addaction name="actionLoadDatabase"/>

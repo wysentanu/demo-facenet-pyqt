@@ -35,14 +35,14 @@ class Ui_MainWindow(object):
         self.horizontalLayout.setObjectName("horizontalLayout")
         spacerItem = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.horizontalLayout.addItem(spacerItem)
-        self.ToggleCamera = QtWidgets.QPushButton(self.centralwidget)
+        self.LoadDatabaseButton = QtWidgets.QPushButton(self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Fixed)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
-        sizePolicy.setHeightForWidth(self.ToggleCamera.sizePolicy().hasHeightForWidth())
-        self.ToggleCamera.setSizePolicy(sizePolicy)
-        self.ToggleCamera.setObjectName("ToggleCamera")
-        self.horizontalLayout.addWidget(self.ToggleCamera)
+        sizePolicy.setHeightForWidth(self.LoadDatabaseButton.sizePolicy().hasHeightForWidth())
+        self.LoadDatabaseButton.setSizePolicy(sizePolicy)
+        self.LoadDatabaseButton.setObjectName("LoadDatabaseButton")
+        self.horizontalLayout.addWidget(self.LoadDatabaseButton)
         spacerItem1 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.horizontalLayout.addItem(spacerItem1)
         self.verticalLayout.addLayout(self.horizontalLayout)
@@ -66,7 +66,7 @@ class Ui_MainWindow(object):
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "Face Recognition"))
-        self.ToggleCamera.setText(_translate("MainWindow", "Turn Off Camera"))
+        self.LoadDatabaseButton.setText(_translate("MainWindow", "Load Database"))
         self.actionLoadDatabase.setTitle(_translate("MainWindow", "Load Database.."))
         self.actionLoad_faces.setText(_translate("MainWindow", "Load faces..."))
 
