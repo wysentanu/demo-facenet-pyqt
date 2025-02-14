@@ -11,11 +11,11 @@ def cosine_similarity(emb1, emb2):
     )
 
 class FaceRecognition:
-    def __init__(self, mtcnn, database_path=None):
+    def __init__(self, device, mtcnn, database_path=None):
         self.mtcnn = mtcnn
-        self.facenet = InceptionResnetV1(pretrained='vggface2').eval()
+        self.facenet = InceptionResnetV1(pretrained='vggface2').eval().to(device)
         self.database_path = database_path
-    
+
     def _connect_database(self):
         db = sqlite3.connect(self.database_path)
         db.enable_load_extension(True) # Setup SQLite vector extension
@@ -43,7 +43,7 @@ class FaceRecognition:
             faces = self.mtcnn.extract(img, boxes, save_path=None) # Extracting faces from original image with boxes
             if faces is not None:
                 for face in faces:
-                    face = face.unsqueeze(0)
+                    face = face.unsqueeze(0).to("cuda")
                     with torch.no_grad():
                         embedding = self.facenet(face).detach().cpu().numpy() # Extract embedding
                         embeddings.append(embedding)
@@ -54,7 +54,7 @@ class FaceRecognition:
     def identify_face(self, boxes, embeddings, threshold=0.6):  # Add boxes as parameter
         if self.database_path is None:
             return ["Unknown"] * len(boxes) if boxes is not None else []  # Return only unknown names
-        
+
         db = self._connect_database()
         cursor = db.cursor()
 
@@ -81,7 +81,7 @@ class FaceRecognition:
                     np_row_embedding = np_row_embedding.reshape(1, -1)
 
                     similarity = cosine_similarity(embedding, np_row_embedding)
-                    
+
                     if similarity > threshold:
                         identified_names.append(f"({similarity*100:.0f}%) {row_name}")
                     else:

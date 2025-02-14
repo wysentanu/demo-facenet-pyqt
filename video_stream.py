@@ -14,13 +14,18 @@ class VideoStream(QObject):
         super().__init__()
 
         # Initialize MTCNN face detector
+        print("CUDA Available:", torch.cuda.is_available())
+        print("Current Device:", torch.cuda.current_device() if torch.cuda.is_available() else "CPU")
+        print("Device Name:",
+              torch.cuda.get_device_name(torch.cuda.current_device()) if torch.cuda.is_available() else "CPU")
+
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         self.mtcnn = MTCNN(keep_all=True, device=self.device)  # keep_all=True for multiple faces
         self.frame_skip = 1
         self.frame_count = 0
 
         # Initialize Face Recognition module
-        self.face_recognizer = FaceRecognition(self.mtcnn, database_path) # Initialize face recognition
+        self.face_recognizer = FaceRecognition(self.device, self.mtcnn, database_path) # Initialize face recognition
 
         self.source = source
         self.frame_height = frame_height
