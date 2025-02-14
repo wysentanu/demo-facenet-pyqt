@@ -6,9 +6,12 @@ from facenet_pytorch import MTCNN, InceptionResnetV1
 import sqlite3
 import sqlite_vec
 from tqdm import tqdm
+from PIL import Image
+from torchvision import transforms
 
 database_path = "faces.db" # Default save to faces.db
 dataset_dir = "faces"
+augment_data = True  # Set to True to enable data augmentation
 
 mtcnn = MTCNN(keep_all=True)
 facenet = InceptionResnetV1(pretrained='vggface2').eval()
@@ -21,14 +24,14 @@ def connect_database(database_path):
 
     return db
 
-def _align_face(img, box):
+def align_face(img, box):
     """Aligns a detected face using landmarks."""
     x1, y1, x2, y2 = box.astype(int)
     face_img = img[y1:y2, x1:x2]
     return face_img
 
 
-def _detect_and_embed(img):
+def detect_and_embed(img):
     """Detects faces, aligns them, and returns embeddings."""
     boxes, _ = mtcnn.detect(img)  # Detect face
     if boxes is None:
@@ -38,7 +41,7 @@ def _detect_and_embed(img):
     aligned_faces = []
 
     for box in boxes:
-        aligned_face = _align_face(img, box)
+        aligned_face = align_face(img, box)
         aligned_faces.append(aligned_face)
 
     if aligned_faces:
@@ -55,6 +58,13 @@ def _detect_and_embed(img):
 
 
 def process_directory(base_dir):
+    augmentations = transforms.Compose([
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomRotation(degrees=15),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+        transforms.RandomResizedCrop(size=(224, 224), scale=(0.8, 1.0)),
+    ])
+
     for person_name in os.listdir(base_dir):
         person_dir = os.path.join(base_dir, person_name)
         if os.path.isdir(person_dir):
@@ -63,7 +73,7 @@ def process_directory(base_dir):
                     image_path = os.path.join(person_dir, image_file)
                     img = cv2.imread(image_path)
                     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                    _, embeddings = _detect_and_embed(img)
+                    _, embeddings = detect_and_embed(img)
 
                     if embeddings:
                         db = connect_database(database_path)
@@ -73,6 +83,21 @@ def process_directory(base_dir):
                                            (person_name, embedding.astype(np.float32)))
                         db.commit()
                         db.close()
+
+                    if augment_data:
+                        pil_img = Image.fromarray(img)
+                        for _ in range(5):  # Create 5 augmentations per image
+                            augmented_img = augmentations(pil_img)
+                            augmented_img = np.array(augmented_img)  # Convert back to NumPy
+                            _, embeddings = detect_and_embed(augmented_img)
+                            if embeddings:
+                                db = connect_database(database_path)
+                                cursor = db.cursor()
+                                for embedding in embeddings:
+                                    cursor.execute("INSERT INTO face_embeddings (name, embedding) VALUES (?,?)",
+                                                   (person_name, embedding.astype(np.float32)))
+                                db.commit()
+                                db.close()
 
 
 def train():
