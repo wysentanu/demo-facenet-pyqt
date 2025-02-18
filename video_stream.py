@@ -10,7 +10,7 @@ import torch
 class VideoStream(QObject):
     frame_ready = pyqtSignal(QImage)
 
-    def __init__(self, source=0, frame_height=1080, frame_width=1920, fps=30, database_path=None):
+    def __init__(self, source=0, fps=30, database_path=None):
         super().__init__()
 
         # Initialize MTCNN face detector
@@ -22,19 +22,7 @@ class VideoStream(QObject):
         # Initialize Face Recognition module
         self.face_recognizer = FaceRecognition(self.mtcnn, database_path) # Initialize face recognition
 
-        self.source = source
-        self.frame_height = frame_height
-        self.frame_width = frame_width
-
-        self.capture = cv2.VideoCapture(self.source)
-        if not self.capture.isOpened():
-            raise ValueError(f"Cannot open video source: {self.source}")
-
-        self.frame_width = int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH))
-        self.frame_height = int(self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-        self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.frame_width)
-        self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.frame_height)
+        self.capture = cv2.VideoCapture(source)
         self.capture.set(cv2.CAP_PROP_FPS, fps)
 
         self.timer = QTimer()
@@ -46,46 +34,40 @@ class VideoStream(QObject):
         self.stop()
 
     def stop(self):
-        if self.timer.isActive():
-            self.timer.stop()
-        if self.capture.isOpened():
-            self.capture.release()
+        self.timer.stop()
+        self.capture.release()
 
     def read_frame(self):
         success, frame = self.capture.read()
-        if success:
-            self.frame_count += 1
-            frame_to_process = frame  # Initialize with the original frame
-
-            if self.frame_count % self.frame_skip == 0:  # Skip frames
-                small_frame = cv2.resize(frame, (320, 240))  # Example smaller size
-                frame_rgb = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
-                boxes, _ = self.mtcnn.detect(frame_rgb)
-                embeddings = [] # Initialize embeddings
-
-                if boxes is not None:
-                    boxes, embeddings = self.face_recognizer._get_embed(frame_rgb, boxes) # Get embeddings
-                    identified_names = self.face_recognizer.identify_face(boxes, embeddings) # Identify faces
-
-                if boxes is not None:
-                    frame_with_names = self._draw_names(frame_rgb, boxes, identified_names) # Draw names
-                    frame_to_process = cv2.cvtColor(frame_with_names, cv2.COLOR_RGB2BGR) # Convert back to BGR for QImage
-                else:
-                    frame_to_process = small_frame  # Use the resized frame if no faces
-
-            q_image = self._convert_frame_to_qimage(frame_to_process)  # Process either original or modified frame
-            self.frame_ready.emit(q_image)
-
-        else:
+        if not success:
             print("Failed to read frame. Stopping stream.")
             self.stop()
+            return
 
-    def _draw_boxes(self, frame, boxes):
-        """Draws bounding boxes on the frame."""
-        for box in boxes:
-            x1, y1, x2, y2 = box.astype(int)
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 1)  # Green box
-        return frame
+        self.frame_count += 1
+        frame_to_process = frame.copy()
+
+        if self.frame_count % self.frame_skip == 0:
+            small_frame = cv2.resize(frame, (320, 240))
+            frame_rgb_small = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+            boxes_small, _ = self.mtcnn.detect(frame_rgb_small)
+
+            if boxes_small is not None:
+                scale_x = frame.shape[1] / 320.0
+                scale_y = frame.shape[0] / 240.0
+                boxes_original = boxes_small * [scale_x, scale_y, scale_x, scale_y]
+                frame_rgb_original = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                boxes, embeddings = self.face_recognizer._get_embed(frame_rgb_original, boxes_original)
+                identified_names = self.face_recognizer.identify_face(boxes, embeddings)
+                frame_rgb_with_names = self._draw_names(frame_rgb_original.copy(), boxes, identified_names)
+                frame_to_process = cv2.cvtColor(frame_rgb_with_names, cv2.COLOR_RGB2BGR)
+            else:
+                frame_to_process = frame.copy()
+        else:
+            frame_to_process = frame.copy()
+
+        q_image = self._convert_frame_to_qimage(frame_to_process)
+        self.frame_ready.emit(q_image)
 
     def _draw_names(self, frame, boxes, names):
         """Draws bounding boxes with a solid label box (YOLO style) and uses a very small font (scale 0.1)."""
@@ -96,18 +78,18 @@ class VideoStream(QObject):
 
             # Draw bounding box
             box_color = (0, 255, 0)
-            box_thickness = 1
+            box_thickness = 2
             cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, box_thickness)
 
             # Label details
             label = names[i]
             font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = 0.5
-            text_thickness = 1  # Increased thickness for better visibility
+            font_scale = 0.8
+            text_thickness = 2  # Increased thickness for better visibility
 
             # Calculate text size
             (text_width, text_height), baseline = cv2.getTextSize(label, font, font_scale, text_thickness)
-            padding = 2
+            padding = 20
 
             # Coordinates for the label background
             rect_top_left = (x1, y1 - text_height - baseline - padding)
@@ -124,31 +106,10 @@ class VideoStream(QObject):
             text_color = (255, 255, 255)
             cv2.putText(frame, label, text_org, font, font_scale, text_color, text_thickness, cv2.LINE_AA)
 
-            height, width = frame.shape[:2]
-            print(f"Frame Width: {width}, Frame Height: {height}")
-
         return frame
 
     def _convert_frame_to_qimage(self, frame):
-        # Get original frame dimensions
-        original_height, original_width = frame.shape[:2]
-
-        # Calculate scale factors for width and height
-        scale_w = self.frame_width / original_width
-        scale_h = self.frame_height / original_height
-
-        # Use the smaller scale to preserve aspect ratio
-        scale = min(scale_w, scale_h)
-        new_width = int(original_width * scale)
-        new_height = int(original_height * scale)
-
-        # Resize with the new dimensions
-        frame_resized = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_CUBIC)
-        frame_rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
-        bytes_per_line = frame_rgb.shape[2] * frame_rgb.shape[1]
-        return QImage(frame_rgb.data, frame_rgb.shape[1], frame_rgb.shape[0], bytes_per_line, QImage.Format_RGB888)
-
-    @property
-    def size(self):
-        """Return the video frame size as a tuple (width, height)."""
-        return (self.frame_width, self.frame_height)
+        height, width, channel = frame.shape
+        bytes_per_line = channel * width
+        rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        return QImage(rgb_image.data, width, height, bytes_per_line, QImage.Format_RGB888)
