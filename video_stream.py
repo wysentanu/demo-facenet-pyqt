@@ -1,4 +1,4 @@
-from PyQt5.QtCore import pyqtSignal, QObject, QTimer
+from PyQt5.QtCore import pyqtSlot, pyqtSignal, Qt, QObject, QTimer
 from PyQt5.QtGui import QImage
 import cv2
 
@@ -9,39 +9,68 @@ import torch
 
 class VideoStream(QObject):
     frame_ready = pyqtSignal(QImage)
+    stopRequested = pyqtSignal()
 
     def __init__(self, source=0, fps=30, database_path=None):
         super().__init__()
-
-        # Initialize MTCNN face detector
-        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-        self.mtcnn = MTCNN(keep_all=True, device=self.device)  # keep_all=True for multiple faces
+        self.source = source
+        self.fps = fps
+        self.database_path = database_path
         self.frame_skip = 1
         self.frame_count = 0
+        self.mtcnn = None
+        self.face_recognizer = None
+        self.capture = None
+        self.timer = None
 
-        # Initialize Face Recognition module
-        self.face_recognizer = FaceRecognition(self.mtcnn, database_path) # Initialize face recognition
-
-        self.capture = cv2.VideoCapture(source)
-        self.capture.set(cv2.CAP_PROP_FPS, fps)
-
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.read_frame)
-        self.timer.setInterval(int(1000 / fps))
-        self.timer.start()
+        # Connect the stop signal to the slot with a queued connection
+        self.stopRequested.connect(self.stop_capture, Qt.QueuedConnection)
 
     def __del__(self):
         self.stop()
 
     def stop(self):
-        self.timer.stop()
         self.capture.release()
+
+    def resume(self):
+        self.read_frame()
+
+    @pyqtSlot()
+    def start_capture(self):
+        # Initialize MTCNN face detector
+        self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        self.mtcnn = MTCNN(keep_all=True, device=self.device)
+
+        # Initialize Face Recognition module
+        self.face_recognizer = FaceRecognition(self.mtcnn, self.database_path)
+
+        self.capture = cv2.VideoCapture(self.source)
+        if not self.capture.isOpened():
+            raise ValueError(f"Cannot open video source: {self.source}")
+
+        self.capture.set(cv2.CAP_PROP_FPS, self.fps)
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.read_frame)
+        self.timer.setInterval(int(1000 / self.fps))
+        self.timer.start()
+
+    @pyqtSlot()
+    def stop_capture(self):
+        if self.timer:
+            self.timer.stop()
+            self.timer.deleteLater()  # Ensure proper cleanup
+        if self.capture:
+            self.capture.release()
+        self.mtcnn = None
+        self.face_recognizer = None
+        self.capture = None
+        self.timer = None
 
     def read_frame(self):
         success, frame = self.capture.read()
         if not success:
             print("Failed to read frame. Stopping stream.")
-            self.stop()
+            self.stop_capture()
             return
 
         self.frame_count += 1

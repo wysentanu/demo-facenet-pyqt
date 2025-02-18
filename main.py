@@ -1,6 +1,6 @@
 import sys
 
-from PyQt5 import QtWidgets
+from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtCore import pyqtSlot, Qt
 from PyQt5.QtGui import QImage
 from PyQt5.QtGui import QPixmap
@@ -14,6 +14,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     def __init__(self):
         super().__init__()
         self.setupUi(self)
+        self.camera_thread = None
         self.camera = None
         self.database_path = "faces.db" if os.path.exists("faces.db") else None
 
@@ -26,6 +27,16 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         # Start video stream
         self._show_video()
 
+    def closeEvent(self, event):
+        try:
+            if self.camera_thread:
+                self.camera.stopRequested.emit()  # Send stop signal to the worker thread
+                self.camera_thread.quit()
+                self.camera_thread.wait()
+        except:
+            pass
+        super().closeEvent(event)
+
     def _show_load_database_dialog(self):
         self.filename = QtWidgets.QFileDialog.getOpenFileName(self, 'Open file', '', "Supported SQLite Vector Database (*.db)")
 
@@ -34,28 +45,27 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             
             # Check if the file exists
             if os.path.exists(self.database_path):
-                self._show_video(self.database_path)
+                self._show_video()
 
-    def _show_video(self, dbPath=None):
+    def _show_video(self):
+        if self.camera_thread:
+            self.camera.stopRequested.emit()
+            self.camera_thread.quit()
+            self.camera_thread.wait()
+            del self.camera_thread
+            del self.camera
+
         try:
-            # Stop the previous camera if it exists
-            if self.camera:
-                self.camera.stop()
-                self.camera.frame_ready.disconnect(self.update_video_label)
-
-            # Initialize a new camera
-            print("Initializing camera...")
-            # Here, we use source=0 for the default webcam.
-            self.camera = VideoStream(
-                source=0,
-                database_path=self.database_path
-            )
+            self.camera_thread = QtCore.QThread()
+            self.camera = VideoStream(source=0, database_path=self.database_path)
+            self.camera.moveToThread(self.camera_thread)
+            self.camera_thread.started.connect(self.camera.start_capture)
+            self.camera.frame_ready.connect(self.update_video_label)
+            self.camera_thread.finished.connect(self.camera.deleteLater)  # Cleanup on thread exit
+            self.camera_thread.start()
         except Exception as e:
             self.videoFrame.clear()
             print(f"Failed to start camera: {e}")
-        else:
-            print("Camera initialized successfully. Starting video stream.")
-            self.camera.frame_ready.connect(self.update_video_label)
 
     @pyqtSlot(QImage)
     def update_video_label(self, image):
