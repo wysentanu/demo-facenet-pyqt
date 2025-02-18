@@ -88,18 +88,45 @@ class VideoStream(QObject):
         return frame
 
     def _draw_names(self, frame, boxes, names):
-        """Draws bounding boxes and names on the frame, handling mismatches."""
-        min_len = min(len(boxes), len(names))  # Get the smaller length
-        for i in range(min_len):  # Iterate up to the smaller length
+        """Draws bounding boxes with a solid label box (YOLO style) and uses a very small font (scale 0.1)."""
+        min_len = min(len(boxes), len(names))
+        for i in range(min_len):
+            # Get bounding box coordinates
             x1, y1, x2, y2 = boxes[i].astype(int)
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 1)  # Green box
-            
+
+            # Draw bounding box
+            box_color = (0, 255, 0)
+            box_thickness = 1
+            cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, box_thickness)
+
+            # Label details
+            label = names[i]
             font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = 0.4  # Reduce font size
-            thickness = 1  # Reduce thickness to match small font
-            
-            cv2.putText(frame, names[i], (x1, y1 - 10), font, font_scale, (0, 255, 0), thickness)
-        
+            font_scale = 0.5
+            text_thickness = 1  # Increased thickness for better visibility
+
+            # Calculate text size
+            (text_width, text_height), baseline = cv2.getTextSize(label, font, font_scale, text_thickness)
+            padding = 2
+
+            # Coordinates for the label background
+            rect_top_left = (x1, y1 - text_height - baseline - padding)
+            rect_bottom_right = (x1 + text_width + padding, y1)
+            if rect_top_left[1] < 0:  # Adjust if the label goes off the top
+                rect_top_left = (x1, y1)
+                rect_bottom_right = (x1 + text_width + padding, y1 + text_height + baseline + padding)
+
+            # Draw the label background rectangle
+            cv2.rectangle(frame, rect_top_left, rect_bottom_right, box_color, cv2.FILLED)
+            text_org = (rect_top_left[0] + padding // 2, rect_bottom_right[1] - baseline - padding // 2)
+
+            # Draw the label text in white with anti-aliasing
+            text_color = (255, 255, 255)
+            cv2.putText(frame, label, text_org, font, font_scale, text_color, text_thickness, cv2.LINE_AA)
+
+            height, width = frame.shape[:2]
+            print(f"Frame Width: {width}, Frame Height: {height}")
+
         return frame
 
     def _convert_frame_to_qimage(self, frame):
