@@ -48,6 +48,18 @@ Install the required packages using `pip`.
   ```bash
   pip3 install -r requirements.txt
   ```
+  
+### Run the Project
+
+To run the project, run this following command:
+
+  ```bash
+  python main.py
+  ```
+  Or explicitly use Python 3:
+  ```bash
+  python3 main.py
+  ```
 
 ## Training the Face Recognizer
 
