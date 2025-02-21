@@ -51,20 +51,40 @@ class FaceRecognition:
                 print("Warning: Could not extract faces. Skipping.")
         return boxes, embeddings
 
+    def _hex_to_bgr(self, hex_color: str) -> tuple:
+        """
+        Convert a hex color string to an BGR tuple.
+
+        Parameters:
+        hex_color (str): A hex color string (e.g., "#FFAABB" or "FFAABB").
+
+        Returns:
+        tuple: A tuple of integers (B, G, R).
+        """
+        hex_color = hex_color.lstrip('#')
+        if len(hex_color) != 6:
+            raise ValueError("Hex color must be 6 characters long (e.g., '#FFAABB').")
+
+        b = int(hex_color[4:6], 16)
+        g = int(hex_color[2:4], 16)
+        r = int(hex_color[0:2], 16)
+
+        return (b, g, r)
+
     def identify_face(self, boxes, embeddings, threshold=0.6):  # Add boxes as parameter
         if self.database_path is None:
             return ["Unknown"] * len(boxes) if boxes is not None else []  # Return only unknown names
         
         db = self._connect_database()
-        cursor = db.cursor()
 
-        identified_names = []
+        identified_faces = []
         if embeddings: # Check if embeddings exist
             for embedding in embeddings:
                 row = db.execute(
                     """
                     SELECT
                         name,
+                        boxcolor,
                         distance,
                         embedding
                     FROM face_embeddings
@@ -76,20 +96,25 @@ class FaceRecognition:
                 ).fetchone()
 
                 if row:
-                    row_name, row_distance, row_embedding = row
+                    row_name, row_boxcolor, row_distance, row_embedding = row
                     np_row_embedding = np.frombuffer(row_embedding, dtype=np.float32)
                     np_row_embedding = np_row_embedding.reshape(1, -1)
 
                     similarity = cosine_similarity(embedding, np_row_embedding)
                     
                     if similarity > threshold:
-                        identified_names.append(f"({similarity*100:.0f}%) {row_name}")
+                        try:
+                            # Convert the hex color from the database to a BGR tuple
+                            bgr_color = self._hex_to_bgr(row_boxcolor)
+                        except Exception:
+                            bgr_color = (0, 0, 0)
+                        identified_faces.append((f"({similarity * 100:.0f}%) {row_name}", bgr_color))
                     else:
-                        identified_names.append("Unknown")
+                        identified_faces.append(("Unknown", (0, 0, 0)))
                 else:
-                    identified_names.append("Unknown")
+                    identified_faces.append(("Unknown", (0, 0, 0)))
         else:
-            identified_names = ["Unknown"] * len(boxes) if boxes is not None else [] # Handle case where no embeddings
+            identified_faces = ["Unknown"] * len(boxes) if boxes is not None else [] # Handle case where no embeddings
 
         db.close()
-        return identified_names  # Return only identified names
+        return identified_faces  # Return identified names with tuple box color

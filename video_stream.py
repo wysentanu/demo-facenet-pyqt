@@ -87,8 +87,8 @@ class VideoStream(QObject):
                 boxes_original = boxes_small * [scale_x, scale_y, scale_x, scale_y]
                 frame_rgb_original = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 boxes, embeddings = self.face_recognizer._get_embed(frame_rgb_original, boxes_original)
-                identified_names = self.face_recognizer.identify_face(boxes, embeddings)
-                frame_rgb_with_names = self._draw_names(frame_rgb_original.copy(), boxes, identified_names)
+                identified_faces = self.face_recognizer.identify_face(boxes, embeddings)
+                frame_rgb_with_names = self._draw_names(frame_rgb_original.copy(), boxes, identified_faces)
                 frame_to_process = cv2.cvtColor(frame_rgb_with_names, cv2.COLOR_RGB2BGR)
             else:
                 frame_to_process = frame.copy()
@@ -98,26 +98,27 @@ class VideoStream(QObject):
         q_image = self._convert_frame_to_qimage(frame_to_process)
         self.frame_ready.emit(q_image)
 
-    def _draw_names(self, frame, boxes, names):
+    def _draw_names(self, frame, boxes, identified_faces):
         """Draws bounding boxes with a solid label box (YOLO style) and uses a very small font (scale 0.1)."""
-        min_len = min(len(boxes), len(names))
+        min_len = min(len(boxes), len(identified_faces))
         for i in range(min_len):
             # Get bounding box coordinates
             x1, y1, x2, y2 = boxes[i].astype(int)
 
+            # Unpack faces
+            name, box_color = identified_faces[i]
+
             # Draw bounding box
-            box_color = (0, 255, 0)
             box_thickness = 2
             cv2.rectangle(frame, (x1, y1), (x2, y2), box_color, box_thickness)
 
             # Label details
-            label = names[i]
             font = cv2.FONT_HERSHEY_SIMPLEX
             font_scale = 0.8
             text_thickness = 2  # Increased thickness for better visibility
 
             # Calculate text size
-            (text_width, text_height), baseline = cv2.getTextSize(label, font, font_scale, text_thickness)
+            (text_width, text_height), baseline = cv2.getTextSize(name, font, font_scale, text_thickness)
             padding = 20
 
             # Coordinates for the label background
@@ -133,7 +134,7 @@ class VideoStream(QObject):
 
             # Draw the label text in white with anti-aliasing
             text_color = (255, 255, 255)
-            cv2.putText(frame, label, text_org, font, font_scale, text_color, text_thickness, cv2.LINE_AA)
+            cv2.putText(frame, name, text_org, font, font_scale, text_color, text_thickness, cv2.LINE_AA)
 
         return frame
 

@@ -8,6 +8,8 @@ import sqlite_vec
 from tqdm import tqdm
 from PIL import Image
 from torchvision import transforms
+import hashlib
+import colorsys
 
 database_path = "faces.db" # Default save to faces.db
 dataset_dir = "faces"
@@ -15,6 +17,39 @@ augment_data = True  # Set to True to enable data augmentation
 
 mtcnn = MTCNN(keep_all=True)
 facenet = InceptionResnetV1(pretrained='vggface2').eval()
+
+def name_to_hex(name: str) -> str:
+    """
+    Convert a given name (string) into a vibrant hex color code.
+
+    The function uses the MD5 hash of the name to generate a hue value (0-360 degrees).
+    It then uses fixed saturation and lightness values (0.8 and 0.4 respectively) to ensure
+    that the generated color is vibrant (covering red, blue, green spectrum) and dark enough
+    for white text, while avoiding grey or monochrome colors.
+
+    Parameters:
+    - name (str): The input string to convert.
+
+    Returns:
+    - str: A hex color string, e.g., "#d23f78".
+    """
+    # Generate an MD5 hash of the input name
+    hash_object = hashlib.md5(name.encode('utf-8'))
+    # Use the full hash value to derive a hue between 0 and 360 degrees
+    hue = (int(hash_object.hexdigest(), 16) % 360) / 360.0
+
+    # Set fixed saturation and lightness for vibrant color:
+    # - High saturation (0.8) ensures the color is not grey.
+    # - Lightness (0.4) gives a darker shade that contrasts well with white text.
+    saturation = 0.8
+    lightness = 0.4
+
+    # Convert HLS (note: colorsys uses HLS ordering: hue, lightness, saturation) to RGB.
+    r, g, b = colorsys.hls_to_rgb(hue, lightness, saturation)
+
+    # Convert RGB values from 0-1 range to 0-255 and format as hex.
+    r, g, b = int(r * 255), int(g * 255), int(b * 255)
+    return f"#{r:02x}{g:02x}{b:02x}"
 
 def connect_database(database_path):
     db = sqlite3.connect(database_path)
@@ -67,6 +102,7 @@ def process_directory(base_dir):
 
     for person_name in os.listdir(base_dir):
         person_dir = os.path.join(base_dir, person_name)
+        box_color = name_to_hex(person_name)
         if os.path.isdir(person_dir):
             for image_file in tqdm(os.listdir(person_dir), desc=f"Processing {person_name}"):
                 if image_file.lower().endswith(('.png', '.jpg', '.jpeg')):
@@ -79,8 +115,8 @@ def process_directory(base_dir):
                         db = connect_database(database_path)
                         cursor = db.cursor()
                         for embedding in embeddings:
-                            cursor.execute("INSERT INTO face_embeddings (name, embedding) VALUES (?, ?)",
-                                           (person_name, embedding.astype(np.float32)))
+                            cursor.execute("INSERT INTO face_embeddings (name, boxcolor, embedding) VALUES (?,?,?)",
+                                           (person_name, box_color, embedding.astype(np.float32)))
                         db.commit()
                         db.close()
 
@@ -94,8 +130,8 @@ def process_directory(base_dir):
                                 db = connect_database(database_path)
                                 cursor = db.cursor()
                                 for embedding in embeddings:
-                                    cursor.execute("INSERT INTO face_embeddings (name, embedding) VALUES (?,?)",
-                                                   (person_name, embedding.astype(np.float32)))
+                                    cursor.execute("INSERT INTO face_embeddings (name, boxcolor, embedding) VALUES (?,?,?)",
+                                                   (person_name, box_color, embedding.astype(np.float32)))
                                 db.commit()
                                 db.close()
 
@@ -117,6 +153,7 @@ def train():
             CREATE VIRTUAL TABLE IF NOT EXISTS face_embeddings using vec0(
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
+                boxcolor TEXT NOT NULL,
                 embedding FLOAT[512]
             )
         """)
